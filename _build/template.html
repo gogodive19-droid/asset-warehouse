@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>콘텐츠 자산 창고 — 폴더 현황</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#ffffff; --ink:#1c2330; --sub:#697386;
+  --line:#e6e9ef; --accent:#2563eb; --accent-soft:#eff4ff;
+  --badge-folder:#eef2f7; --badge-file:#e8f1ff; --warn:#b45309; --warn-bg:#fef3e2;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  font-size:14px;line-height:1.5}
+.wrap{max-width:980px;margin:0 auto;padding:24px 16px 80px}
+header{margin-bottom:16px}
+h1{font-size:20px;margin:0 0 4px;font-weight:700}
+.meta{color:var(--sub);font-size:13px}
+.totals{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+.tot{background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:10px 14px;min-width:120px}
+.tot .k{color:var(--sub);font-size:12px}
+.tot .v{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+input[type=search]{flex:1;min-width:220px;padding:9px 12px;border:1px solid var(--line);
+  border-radius:8px;font-size:14px;background:var(--card);color:var(--ink)}
+input[type=search]:focus{outline:2px solid var(--accent);outline-offset:-1px}
+button{padding:8px 12px;border:1px solid var(--line);background:var(--card);
+  border-radius:8px;font-size:13px;color:var(--ink);cursor:pointer}
+button:hover{background:var(--accent-soft);border-color:var(--accent)}
+.tree{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 6px}
+ul.branch{list-style:none;margin:0;padding-left:18px}
+ul.branch.root{padding-left:4px}
+li{margin:1px 0}
+.row{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:7px;cursor:pointer}
+.row:hover{background:var(--accent-soft)}
+.row.leaf{cursor:default}
+.caret{width:14px;flex:none;color:var(--sub);font-size:11px;transition:transform .12s;text-align:center}
+.open>.row .caret{transform:rotate(90deg)}
+.name{flex:1;min-width:0;overflow-wrap:anywhere}
+.name .unsorted{color:var(--warn);background:var(--warn-bg);border-radius:4px;
+  font-size:11px;padding:0 5px;margin-left:6px}
+.badges{flex:none;display:flex;gap:4px}
+.b{font-size:11.5px;padding:1px 7px;border-radius:99px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.b.folder{background:var(--badge-folder);color:var(--sub)}
+.b.file{background:var(--badge-file);color:var(--accent)}
+.b.zero{opacity:.45}
+.result-path{color:var(--sub);font-size:12px;overflow-wrap:anywhere}
+.result-item{padding:7px 10px;border-bottom:1px solid var(--line)}
+.result-item:last-child{border-bottom:none}
+.result-name{font-weight:600}
+.count-note{color:var(--sub);font-size:12.5px;margin:8px 2px}
+footer{margin-top:18px;color:var(--sub);font-size:12px}
+@media (max-width:600px){ .badges .b.folder{display:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>🗃️ 콘텐츠 자산 창고 — 폴더 현황</h1>
+  <div class="meta">업데이트: <b id="gen"></b> (매일 오전 11시 자동 갱신) · 배지: <span class="b folder">폴더</span> 하위 폴더 수(누적) · <span class="b file">파일</span> 파일 수(누적)</div>
+</header>
+
+<div class="totals" id="totals"></div>
+
+<div class="toolbar">
+  <input type="search" id="q" placeholder="폴더명 검색 (예: 앰버서더, GE01, 수모…)">
+  <button id="b1">1단계</button>
+  <button id="b2">2단계</button>
+  <button id="b3">3단계</button>
+  <button id="bc">모두 접기</button>
+</div>
+
+<div class="count-note" id="note"></div>
+<div class="tree" id="tree"></div>
+
+<footer>내부 자료 현황 페이지 · 자동 생성됨</footer>
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const root = DATA.tree;
+document.getElementById('gen').textContent = DATA.generated;
+const fmt = n => n.toLocaleString('ko-KR');
+const isSorted = name => /^\d/.test(name);
+
+// totals
+const totalsEl = document.getElementById('totals');
+const mk = (k,v) => { const d=document.createElement('div'); d.className='tot';
+  d.innerHTML = `<div class="k">${k}</div><div class="v">${v}</div>`; totalsEl.appendChild(d); };
+mk('전체 폴더', fmt(root.td));
+mk('전체 파일', fmt(root.tf));
+mk('최상위 폴더', fmt((root.c||[]).length));
+const unsortedTop = (root.c||[]).filter(n=>!isSorted(n.n));
+mk('미정리 최상위', fmt(unsortedTop.length));
+
+const treeEl = document.getElementById('tree');
+const noteEl = document.getElementById('note');
+
+function badge(node){
+  const td = node.td||0, tf = node.tf||0;
+  return `<span class="badges">
+    <span class="b folder ${td? '':'zero'}">폴더 ${fmt(td)}</span>
+    <span class="b file ${tf? '':'zero'}">파일 ${fmt(tf)}</span></span>`;
+}
+function rowHTML(node, depth){
+  const hasKids = node.c && node.c.length;
+  const unsorted = depth===1 && !isSorted(node.n) ? '<span class="unsorted">미정리</span>' : '';
+  return `<div class="row ${hasKids?'':'leaf'}">
+    <span class="caret">${hasKids?'▶':''}</span>
+    <span class="name">${esc(node.n)}${unsorted}</span>${badge(node)}</div>`;
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function makeLi(node, depth){
+  const li = document.createElement('li');
+  li.innerHTML = rowHTML(node, depth);
+  li._node = node; li._depth = depth; li._built = false;
+  const row = li.firstElementChild;
+  if(node.c && node.c.length){
+    row.addEventListener('click', () => toggle(li));
+  }
+  return li;
+}
+function buildChildren(li){
+  if(li._built) return;
+  const ul = document.createElement('ul'); ul.className='branch';
+  for(const ch of li._node.c) ul.appendChild(makeLi(ch, li._depth+1));
+  li.appendChild(ul); li._built = true;
+}
+function toggle(li, force){
+  const open = li.classList.contains('open');
+  const want = force===undefined ? !open : force;
+  if(want){ buildChildren(li); li.classList.add('open'); li.querySelector('ul').style.display=''; }
+  else if(li._built){ li.classList.remove('open'); li.querySelector('ul').style.display='none'; }
+  else li.classList.remove('open');
+}
+function renderTree(){
+  treeEl.innerHTML='';
+  const ul = document.createElement('ul'); ul.className='branch root';
+  for(const ch of root.c||[]) ul.appendChild(makeLi(ch, 1));
+  treeEl.appendChild(ul);
+  noteEl.textContent = '';
+}
+function expandToDepth(d){
+  renderTree();
+  const walk = (ul, depth) => {
+    for(const li of ul.children){
+      if(depth < d && li._node.c && li._node.c.length){
+        toggle(li, true);
+        walk(li.querySelector('ul'), depth+1);
+      }
+    }
+  };
+  walk(treeEl.firstElementChild, 1);
+}
+
+// search
+function search(q){
+  q = q.trim().toLowerCase();
+  if(!q){ renderTree(); return; }
+  const results = [];
+  const walk = (node, path) => {
+    const p = path ? path + ' / ' + node.n : node.n;
+    if(node.n.toLowerCase().includes(q)) results.push({node, path: p});
+    if(node.c) for(const ch of node.c) walk(ch, p);
+  };
+  for(const ch of root.c||[]) walk(ch, '');
+  treeEl.innerHTML='';
+  const cap = 500;
+  noteEl.textContent = `검색 결과 ${fmt(results.length)}건` + (results.length>cap? ` (상위 ${cap}건 표시)` : '');
+  for(const r of results.slice(0,cap)){
+    const d = document.createElement('div'); d.className='result-item';
+    d.innerHTML = `<div style="display:flex;gap:6px;align-items:center">
+      <span class="result-name name">${esc(r.node.n)}</span>${badge(r.node)}</div>
+      <div class="result-path">${esc(r.path)}</div>`;
+    treeEl.appendChild(d);
+  }
+  if(!results.length){
+    const d = document.createElement('div'); d.className='result-item';
+    d.textContent = '일치하는 폴더가 없습니다.'; treeEl.appendChild(d);
+  }
+}
+let timer=null;
+document.getElementById('q').addEventListener('input', e=>{
+  clearTimeout(timer); timer=setTimeout(()=>search(e.target.value), 200);
+});
+document.getElementById('b1').onclick=()=>expandToDepth(1);
+document.getElementById('b2').onclick=()=>expandToDepth(2);
+document.getElementById('b3').onclick=()=>expandToDepth(3);
+document.getElementById('bc').onclick=()=>renderTree();
+
+renderTree();
+</script>
+</body>
+</html>
